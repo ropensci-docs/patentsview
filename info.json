@@ -1,0 +1,12 @@
+{
+  "commit": {
+    "commit": "b98e00365bf311c9a9bd93ad00d65a1b91abcd14",
+    "author": "christopher crew baker <chriscrewbaker@gmail.com>",
+    "time": "2020-05-01 23:39:09",
+    "files": 1,
+    "merge": false,
+    "message": "Make sure tests are skipped on travis\n"
+  },
+  "remote": "https://github.com/ropensci/patentsview",
+  "pkg": "patentsview"
+}
