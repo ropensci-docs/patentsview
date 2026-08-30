@@ -1,0 +1,510 @@
+# Understanding the API
+
+Oh, the interesting things you’ll learn when you take the time to read
+the API’s documentation! Here are two gems gleaned from a [jupyter
+notebook](https://github.com/PatentsView/PatentsView-Code-Examples/blob/main/PatentSearch/0-patentsearch-api-demo.ipynb)
+in PatentsView’s PatentsView-Code-Snippets repo.
+
+## Fields Shorthand
+
+The notebook starts out fairly fluffy but things really get interesting
+really quickly. See this under “constructing your query”, I don’t
+remember seeing this anywhere else:
+
+> Some endpoints contain groups of fields representing related entities
+> connected to one of that endpoint’s primary entity type; for example,
+> the patent endpoint contains a field “inventors”, which contains
+> information on all inventors associated with any given patent. *The
+> fields for related entities can be requested in the API request’s
+> fields parameter as a group by using the group name in the fields
+> parameter*, or individually by specifying the required field as
+> “{entity_type}.{subfield}”.
+
+Mind blown, so we can, for example, request all the nested application
+fields from the patent endpoint by simply requesting “application” in
+the fields list.
+
+The new version of the R package will let its users leverage this same
+feature, allowing group names to be specified in the fields parameter.
+
+``` r
+
+library(patentsview)
+
+query <- qry_funs$eq(patent_id = "10568228")
+shorthand_results <- search_pv(query, fields = c("application"), method = "POST")
+
+# Now that the R package uses httr2, we can use its last_request()
+# to see what was POSTed to the API
+cat(httr2::last_request()$body$data)
+#> {"q":{"_eq":{"patent_id":"10568228"}},"f":["application","patent_id"],"o":{"size":1000}}
+
+# Here we view the results
+shorthand_results$data$patent$application
+#> [[1]]
+#>   application_id application_type filing_date series_code rule_47_flag
+#> 1      15/995745               15  2018-06-01          15         TRUE
+#>   filing_type
+#> 1          15
+
+# Now we'll try to explicitly request all the application fields and make a POST to the API
+explicit_fields <- get_fields("patent", groups = "application")
+explicit_fields
+#> [1] "application.application_id"   "application.application_type"
+#> [3] "application.filing_date"      "application.filing_type"     
+#> [5] "application.rule_47_flag"     "application.series_code"
+explicit_results <- search_pv(query, fields = explicit_fields, method = "POST")
+
+# but the R package figured out that the shorthand could be used instead
+# so what was POSTed to the API is the same!
+cat(httr2::last_request()$body$data)
+#> {"q":{"_eq":{"patent_id":"10568228"}},"f":["application","patent_id"],"o":{"size":1000}}
+
+# and, of course, the results from the API are the same
+explicit_results$data$patent$application
+#> [[1]]
+#>   application_id application_type filing_date series_code rule_47_flag
+#> 1      15/995745               15  2018-06-01          15         TRUE
+#>   filing_type
+#> 1          15
+
+# (Observation reported to the API team: application_type, series_code and filing_type
+# all seem to have the same values and not just in this one example.)
+```
+
+The motivation to adopt the API’s shorthand is that, with a modest
+query, explicitly requesting all of the patent endpoint’s fields can be
+too much to send via a GET request (the resulting URL can exceed 4K).
+
+## Unexpected Results
+
+Then, as if that wasn’t enough, some non-obvious behavior appears under
+the second bullet point under the “Queries using related entity fields”
+header:
+
+> When applying multiple conditions to related-entity fields, a central
+> entity record will be returned if any combination of its related
+> entities satisfy those conditions.
+
+In their example, they use George Washington as an inventor. Humorously,
+there are modern inventors with that name! Abraham Lincoln is also used
+as an inventor. Good ol’ Abe is the only US president so far to receive
+a
+[patent](https://ppubs.uspto.gov/pubwebapp/external.html?db=USPAT&type=ids&q=(0006469).pn.)
+but it’s too early to be in the patentsview database and there are no
+modern Abraham Lincolns to be found as inventors.
+
+To demonstrate the API’s not-exactly-intuitive behavior, we’ll keep
+George as an inventor but substitute Thomas Jefferson for Abe, as there
+are inventors going by that famous name, though they aren’t on nickels
+or two dollar bills in the US.
+
+``` r
+
+library(dplyr)
+
+patents_query <- 
+  with_qfuns(
+    or(
+      and(
+        text_phrase(inventors.inventor_name_first = "George"),
+        text_phrase(inventors.inventor_name_last = "Washington")
+      ),
+      and(
+        text_phrase(inventors.inventor_name_first = "Thomas"),
+        text_phrase(inventors.inventor_name_last = "Jefferson")
+      )
+    )
+  )
+
+patent_fields <-c("patent_id", "inventors.inventor_name_first", "inventors.inventor_name_last")
+pat_res <- search_pv(patents_query, fields=patent_fields, endpoint="patent")
+dl <- unnest_pv_data(pat_res$data)
+
+# We got back all the inventors on the patents that met our search criteria.  We'll filter out
+# the inventors that didn't strictly meet our criteria (they're coinventors that came along for 
+# the ride with the ones that met our criteria), we want the noted behavior to be clear.
+
+display_inventors <- 
+   dl$inventors %>%
+   filter(grepl("^(George|Thomas)", inventor_name_first ) | grepl("^(Washington|Jefferson)", inventor_name_last))
+
+display_inventors
+#>    patent_id
+#> 1   10180440
+#> 2   10180440
+#> 3   10374815
+#> 4   10374815
+#> 5   10568228
+#> 6   10664808
+#> 7   11032709
+#> 8   11032709
+#> 9   12263952
+#> 10   4078607
+#> 11   4104193
+#> 12   5643452
+#> 13   5645778
+#> 14   5736046
+#> 15   5897817
+#> 16   5914971
+#> 17   5914971
+#> 18   6218441
+#> 19   6881337
+#> 20   6905071
+#> 21   6905071
+#> 22   6905071
+#> 23   7144505
+#> 24   7598629
+#> 25   7598629
+#> 26   7971908
+#> 27   7971908
+#> 28   7971908
+#> 29   8347213
+#> 30   8347213
+#> 31   8717367
+#> 32   8717367
+#>                                                                     inventor
+#> 1       https://search.patentsview.org/api/v1/inventor/fl:st_ln:jefferson-2/
+#> 2             https://search.patentsview.org/api/v1/inventor/fl:th_ln:fay-2/
+#> 3          https://search.patentsview.org/api/v1/inventor/fl:th_ln:bonola-1/
+#> 4       https://search.patentsview.org/api/v1/inventor/fl:lo_ln:jefferson-2/
+#> 5      https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-1/
+#> 6     https://search.patentsview.org/api/v1/inventor/fl:jo_ln:washington-11/
+#> 7          https://search.patentsview.org/api/v1/inventor/fl:th_ln:bonola-1/
+#> 8       https://search.patentsview.org/api/v1/inventor/fl:lo_ln:jefferson-2/
+#> 9  https://search.patentsview.org/api/v1/inventor/ifajrttz5x29w1n3bk7z8if29/
+#> 10      https://search.patentsview.org/api/v1/inventor/fl:th_ln:jefferson-1/
+#> 11      https://search.patentsview.org/api/v1/inventor/fl:th_ln:jefferson-1/
+#> 12     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 13     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 14     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 15     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 16          https://search.patentsview.org/api/v1/inventor/fl:ge_ln:burke-8/
+#> 17     https://search.patentsview.org/api/v1/inventor/fl:ro_ln:washington-2/
+#> 18     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 19     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 20       https://search.patentsview.org/api/v1/inventor/fl:th_ln:amundsen-2/
+#> 21          https://search.patentsview.org/api/v1/inventor/fl:ge_ln:kolis-1/
+#> 22      https://search.patentsview.org/api/v1/inventor/fl:ma_ln:jefferson-2/
+#> 23     https://search.patentsview.org/api/v1/inventor/fl:ge_ln:washington-2/
+#> 24          https://search.patentsview.org/api/v1/inventor/fl:ge_ln:burke-8/
+#> 25     https://search.patentsview.org/api/v1/inventor/fl:ro_ln:washington-2/
+#> 26          https://search.patentsview.org/api/v1/inventor/fl:th_ln:tilly-1/
+#> 27       https://search.patentsview.org/api/v1/inventor/fl:th_ln:dimambro-1/
+#> 28      https://search.patentsview.org/api/v1/inventor/fl:al_ln:jefferson-1/
+#> 29        https://search.patentsview.org/api/v1/inventor/fl:th_ln:clifton-3/
+#> 30      https://search.patentsview.org/api/v1/inventor/fl:br_ln:jefferson-1/
+#> 31        https://search.patentsview.org/api/v1/inventor/fl:th_ln:clifton-3/
+#> 32      https://search.patentsview.org/api/v1/inventor/fl:br_ln:jefferson-1/
+#>                  inventor_id inventor_name_first    inventor_name_last
+#> 1       fl:st_ln:jefferson-2          Stanley T.             Jefferson
+#> 2             fl:th_ln:fay-2              Thomas                   FAY
+#> 3          fl:th_ln:bonola-1           Thomas J.                Bonola
+#> 4       fl:lo_ln:jefferson-2             Lorri L             Jefferson
+#> 5      fl:ge_ln:washington-1      George Elliott            Washington
+#> 6     fl:jo_ln:washington-11                Joel            Washington
+#> 7          fl:th_ln:bonola-1           Thomas J.                Bonola
+#> 8       fl:lo_ln:jefferson-2             Lorri L             Jefferson
+#> 9  ifajrttz5x29w1n3bk7z8if29              George Fitzgerald Washington
+#> 10      fl:th_ln:jefferson-1              Thomas             Jefferson
+#> 11      fl:th_ln:jefferson-1              Thomas             Jefferson
+#> 12     fl:ge_ln:washington-2              George            Washington
+#> 13     fl:ge_ln:washington-2              George            Washington
+#> 14     fl:ge_ln:washington-2              George            Washington
+#> 15     fl:ge_ln:washington-2              George            Washington
+#> 16          fl:ge_ln:burke-8           George E.            Burke, Jr.
+#> 17     fl:ro_ln:washington-2           Rodney B.            Washington
+#> 18     fl:ge_ln:washington-2              George            Washington
+#> 19     fl:ge_ln:washington-2              George            Washington
+#> 20       fl:th_ln:amundsen-2              Thomas              Amundsen
+#> 21          fl:ge_ln:kolis-1              George                 Kolis
+#> 22      fl:ma_ln:jefferson-2             Matthew             Jefferson
+#> 23     fl:ge_ln:washington-2              George            Washington
+#> 24          fl:ge_ln:burke-8           George E.            Burke, Jr.
+#> 25     fl:ro_ln:washington-2           Rodney B.            Washington
+#> 26          fl:th_ln:tilly-1              Thomas                 Tilly
+#> 27       fl:th_ln:dimambro-1           Thomas M.              DiMambro
+#> 28      fl:al_ln:jefferson-1           Alfred A.             Jefferson
+#> 29        fl:th_ln:clifton-3           Thomas M.               Clifton
+#> 30      fl:br_ln:jefferson-1          Bradley C.             Jefferson
+#> 31        fl:th_ln:clifton-3           Thomas M.               Clifton
+#> 32      fl:br_ln:jefferson-1          Bradley C.             Jefferson
+#>    inventor_gender_code                 inventor_location_id inventor_city
+#> 1                     M a26e22db-16c8-11ed-9b5f-1234bde3cd05     Palo Alto
+#> 2                     M 8f94a78e-16c8-11ed-9b5f-1234bde3cd05  Fort Collins
+#> 3                     M d22da190-16c7-11ed-9b5f-1234bde3cd05       Cypress
+#> 4                     F ca22ab34-16c7-11ed-9b5f-1234bde3cd05       Tomball
+#> 5                     M ea0f11fa-16c7-11ed-9b5f-1234bde3cd05     Oak Creek
+#> 6                     M 4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco
+#> 7                     M a26e22db-16c8-11ed-9b5f-1234bde3cd05     Palo Alto
+#> 8                     F cddcf1ae-16c7-11ed-9b5f-1234bde3cd05        Spring
+#> 9                     M ebd2597d-16c7-11ed-9b5f-1234bde3cd05    Blythewood
+#> 10                    M 4e49a0a0-16c8-11ed-9b5f-1234bde3cd05       Houston
+#> 11                    M 4e49a0a0-16c8-11ed-9b5f-1234bde3cd05       Houston
+#> 12                    M f4141084-16c7-11ed-9b5f-1234bde3cd05         Miami
+#> 13                    M ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar
+#> 14                    M f4141084-16c7-11ed-9b5f-1234bde3cd05         Miami
+#> 15                    M ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar
+#> 16                    M 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh
+#> 17                    M 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh
+#> 18                    M ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar
+#> 19                    M ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar
+#> 20                    M f9f15056-16c7-11ed-9b5f-1234bde3cd05  Turnersville
+#> 21                    M fc83ee3c-16c7-11ed-9b5f-1234bde3cd05    Pennsauken
+#> 22                    M 09c79f9e-16c8-11ed-9b5f-1234bde3cd05      Seaville
+#> 23                    M ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar
+#> 24                    M 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh
+#> 25                    M 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh
+#> 26                    M f7b45376-16c7-11ed-9b5f-1234bde3cd05       Algonac
+#> 27                    M f442979f-16c7-11ed-9b5f-1234bde3cd05          Troy
+#> 28                    M f7cdbded-16c7-11ed-9b5f-1234bde3cd05    Southfield
+#> 29                    M 0712f582-16c8-11ed-9b5f-1234bde3cd05        Boston
+#> 30                    M 4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco
+#> 31                    M 0712f582-16c8-11ed-9b5f-1234bde3cd05        Boston
+#> 32                    M 4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco
+#>    inventor_state inventor_country inventor_sequence
+#> 1              CA               US                 1
+#> 2              CO               US                 2
+#> 3              TX               US                 8
+#> 4              TX               US                 6
+#> 5              WI               US                 1
+#> 6              CA               US                 0
+#> 7              CA               US                 8
+#> 8              TX               US                 6
+#> 9              SC               US                 0
+#> 10             TX               US                 2
+#> 11             TX               US                 2
+#> 12             FL               US                 5
+#> 13             FL               US                 2
+#> 14             FL               US                 5
+#> 15             FL               US                 2
+#> 16             NC               US                 4
+#> 17             NC               US                 2
+#> 18             FL               US                 7
+#> 19             FL               US                 7
+#> 20             NJ               US                 4
+#> 21             NJ               US                 8
+#> 22             NJ               US                11
+#> 23             FL               US                 4
+#> 24             NC               US                 2
+#> 25             NC               US                 1
+#> 26             MI               US                 4
+#> 27             MI               US                 1
+#> 28             MI               US                 2
+#> 29             MA               US                 3
+#> 30             CA               US                 2
+#> 31             MA               US                 3
+#> 32             CA               US                 2
+```
+
+Some rows act as you’d expect, like patent 4078607’s Thomas Jefferson.
+In others, two inventors combine to meet the search criteria, like
+6905071’s **Thomas** Amundsen and Matthew **Jefferson**. This might be a
+match we didn’t intend.
+
+Now we’ll hit the inventor endpoint with a similar query, as the jupyter
+notebook suggests.
+
+``` r
+
+
+inventors_query <- 
+  with_qfuns(
+    or(
+      and(
+        text_phrase(inventor_name_first = "George"),
+        text_phrase(inventor_name_last = "Washington")
+      ),
+      and(
+        text_phrase(inventor_name_first = "Thomas"),
+        text_phrase(inventor_name_last = "Jefferson")
+      )
+    )
+  )
+
+inventor_fields <- c("inventor_id","inventor_name_first","inventor_name_last")
+inventor_res <- search_pv(inventors_query, fields=inventor_fields, endpoint="inventor")
+actual_inventors <- unnest_pv_data(inventor_res$data)
+
+actual_inventors[[1]]
+#>                 inventor_id inventor_name_first    inventor_name_last
+#> 1     fl:ge_ln:washington-1      George Elliott            Washington
+#> 2     fl:ge_ln:washington-2              George            Washington
+#> 3      fl:th_ln:jefferson-1              Thomas             Jefferson
+#> 4 ifajrttz5x29w1n3bk7z8if29              George Fitzgerald Washington
+```
+
+Now, with actual_inventors’ inventor_ids in hand, we’ll ask the patent
+endpoint for their patents. The results are quite different than what
+the first query returned. (These patents would have names matching at
+least one of our two famous forefather’s names. The first query
+unintuitively matched names where the first and last name matches did
+not necessarily both occur on the same inventor.)
+
+``` r
+
+id_query <- qry_funs$eq(inventors.inventor_id=actual_inventors$inventors$inventor_id)
+
+patent_fields <-c("patent_id", "inventors.inventor_name_first", "inventors.inventor_name_last",
+  "inventors.inventor_id")
+pat_res <- search_pv(id_query, fields=patent_fields, sort=c(patent_id = "asc"))
+#> Error in f1$data_type == "date" && !is_date(value): 'length = 2' in coercion to 'logical(1)'
+
+dl <- unnest_pv_data(pat_res$data)
+
+# we'll apply a similar name filter like we did on the first query's results
+# we requested inventors.inventor_id but we also get back inventor, a HATEOAS link we don't need
+display_inventors <- 
+   dl$inventors %>%
+   filter(grepl("^(George|Thomas)", inventor_name_first ) | grepl("^(Washington|Jefferson)", inventor_name_last)) %>%
+   select(-inventor)
+
+display_inventors
+#>    patent_id               inventor_id inventor_name_first
+#> 1   10180440      fl:st_ln:jefferson-2          Stanley T.
+#> 2   10180440            fl:th_ln:fay-2              Thomas
+#> 3   10374815         fl:th_ln:bonola-1           Thomas J.
+#> 4   10374815      fl:lo_ln:jefferson-2             Lorri L
+#> 5   10568228     fl:ge_ln:washington-1      George Elliott
+#> 6   10664808    fl:jo_ln:washington-11                Joel
+#> 7   11032709         fl:th_ln:bonola-1           Thomas J.
+#> 8   11032709      fl:lo_ln:jefferson-2             Lorri L
+#> 9   12263952 ifajrttz5x29w1n3bk7z8if29              George
+#> 10   4078607      fl:th_ln:jefferson-1              Thomas
+#> 11   4104193      fl:th_ln:jefferson-1              Thomas
+#> 12   5643452     fl:ge_ln:washington-2              George
+#> 13   5645778     fl:ge_ln:washington-2              George
+#> 14   5736046     fl:ge_ln:washington-2              George
+#> 15   5897817     fl:ge_ln:washington-2              George
+#> 16   5914971          fl:ge_ln:burke-8           George E.
+#> 17   5914971     fl:ro_ln:washington-2           Rodney B.
+#> 18   6218441     fl:ge_ln:washington-2              George
+#> 19   6881337     fl:ge_ln:washington-2              George
+#> 20   6905071       fl:th_ln:amundsen-2              Thomas
+#> 21   6905071          fl:ge_ln:kolis-1              George
+#> 22   6905071      fl:ma_ln:jefferson-2             Matthew
+#> 23   7144505     fl:ge_ln:washington-2              George
+#> 24   7598629          fl:ge_ln:burke-8           George E.
+#> 25   7598629     fl:ro_ln:washington-2           Rodney B.
+#> 26   7971908          fl:th_ln:tilly-1              Thomas
+#> 27   7971908       fl:th_ln:dimambro-1           Thomas M.
+#> 28   7971908      fl:al_ln:jefferson-1           Alfred A.
+#> 29   8347213        fl:th_ln:clifton-3           Thomas M.
+#> 30   8347213      fl:br_ln:jefferson-1          Bradley C.
+#> 31   8717367        fl:th_ln:clifton-3           Thomas M.
+#> 32   8717367      fl:br_ln:jefferson-1          Bradley C.
+#>       inventor_name_last inventor_gender_code
+#> 1              Jefferson                    M
+#> 2                    FAY                    M
+#> 3                 Bonola                    M
+#> 4              Jefferson                    F
+#> 5             Washington                    M
+#> 6             Washington                    M
+#> 7                 Bonola                    M
+#> 8              Jefferson                    F
+#> 9  Fitzgerald Washington                    M
+#> 10             Jefferson                    M
+#> 11             Jefferson                    M
+#> 12            Washington                    M
+#> 13            Washington                    M
+#> 14            Washington                    M
+#> 15            Washington                    M
+#> 16            Burke, Jr.                    M
+#> 17            Washington                    M
+#> 18            Washington                    M
+#> 19            Washington                    M
+#> 20              Amundsen                    M
+#> 21                 Kolis                    M
+#> 22             Jefferson                    M
+#> 23            Washington                    M
+#> 24            Burke, Jr.                    M
+#> 25            Washington                    M
+#> 26                 Tilly                    M
+#> 27              DiMambro                    M
+#> 28             Jefferson                    M
+#> 29               Clifton                    M
+#> 30             Jefferson                    M
+#> 31               Clifton                    M
+#> 32             Jefferson                    M
+#>                    inventor_location_id inventor_city inventor_state
+#> 1  a26e22db-16c8-11ed-9b5f-1234bde3cd05     Palo Alto             CA
+#> 2  8f94a78e-16c8-11ed-9b5f-1234bde3cd05  Fort Collins             CO
+#> 3  d22da190-16c7-11ed-9b5f-1234bde3cd05       Cypress             TX
+#> 4  ca22ab34-16c7-11ed-9b5f-1234bde3cd05       Tomball             TX
+#> 5  ea0f11fa-16c7-11ed-9b5f-1234bde3cd05     Oak Creek             WI
+#> 6  4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco             CA
+#> 7  a26e22db-16c8-11ed-9b5f-1234bde3cd05     Palo Alto             CA
+#> 8  cddcf1ae-16c7-11ed-9b5f-1234bde3cd05        Spring             TX
+#> 9  ebd2597d-16c7-11ed-9b5f-1234bde3cd05    Blythewood             SC
+#> 10 4e49a0a0-16c8-11ed-9b5f-1234bde3cd05       Houston             TX
+#> 11 4e49a0a0-16c8-11ed-9b5f-1234bde3cd05       Houston             TX
+#> 12 f4141084-16c7-11ed-9b5f-1234bde3cd05         Miami             FL
+#> 13 ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar             FL
+#> 14 f4141084-16c7-11ed-9b5f-1234bde3cd05         Miami             FL
+#> 15 ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar             FL
+#> 16 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh             NC
+#> 17 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh             NC
+#> 18 ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar             FL
+#> 19 ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar             FL
+#> 20 f9f15056-16c7-11ed-9b5f-1234bde3cd05  Turnersville             NJ
+#> 21 fc83ee3c-16c7-11ed-9b5f-1234bde3cd05    Pennsauken             NJ
+#> 22 09c79f9e-16c8-11ed-9b5f-1234bde3cd05      Seaville             NJ
+#> 23 ec3c5775-16c7-11ed-9b5f-1234bde3cd05       Miramar             FL
+#> 24 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh             NC
+#> 25 04726932-16c8-11ed-9b5f-1234bde3cd05       Raleigh             NC
+#> 26 f7b45376-16c7-11ed-9b5f-1234bde3cd05       Algonac             MI
+#> 27 f442979f-16c7-11ed-9b5f-1234bde3cd05          Troy             MI
+#> 28 f7cdbded-16c7-11ed-9b5f-1234bde3cd05    Southfield             MI
+#> 29 0712f582-16c8-11ed-9b5f-1234bde3cd05        Boston             MA
+#> 30 4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco             CA
+#> 31 0712f582-16c8-11ed-9b5f-1234bde3cd05        Boston             MA
+#> 32 4affd925-16c8-11ed-9b5f-1234bde3cd05 San Francisco             CA
+#>    inventor_country inventor_sequence
+#> 1                US                 1
+#> 2                US                 2
+#> 3                US                 8
+#> 4                US                 6
+#> 5                US                 1
+#> 6                US                 0
+#> 7                US                 8
+#> 8                US                 6
+#> 9                US                 0
+#> 10               US                 2
+#> 11               US                 2
+#> 12               US                 5
+#> 13               US                 2
+#> 14               US                 5
+#> 15               US                 2
+#> 16               US                 4
+#> 17               US                 2
+#> 18               US                 7
+#> 19               US                 7
+#> 20               US                 4
+#> 21               US                 8
+#> 22               US                11
+#> 23               US                 4
+#> 24               US                 2
+#> 25               US                 1
+#> 26               US                 4
+#> 27               US                 1
+#> 28               US                 2
+#> 29               US                 3
+#> 30               US                 2
+#> 31               US                 3
+#> 32               US                 2
+```
+
+## Acknowledgment
+
+Again, credit goes to the Patentsview API team for creating the cited
+jupyter notebook. This is just portions of it in R package form. The
+repo doesn’t have a stated license but when I checked, I was told:
+
+> For the repo license we are looking at the [GNU General Public License
+> v3](https://www.gnu.org/licenses/quick-guide-gplv3.html) (GPL3).
+
+That is the same license as R itself so I don’t think we’ve violated
+anything. For extra fun check out [Russ’
+fork](https://github.com/mustberuss/PatentsView-Code-Snippets/blob/master/07_PatentSearch_API_demo/PV%20PatentSearch%20API%20tutorial.ipynb)
+where there’s python code for retrieving Mr. Jefferson’s patents etc.
+There was no reply when we asked if they’d be receptive to a PR.

@@ -1,0 +1,13 @@
+{
+  "commit": {
+    "commit": "c4e3b48943a715f2feb04c2e7bdeb81805879b39",
+    "author": "Russ Allen <rrjallen@yahoo.com>",
+    "time": "2026-02-27T00:02:32Z",
+    "files": 11,
+    "merge": true,
+    "message": "Merge pull request #46 from mustberuss/cran-updates\n\nCran updates-  submission accepted by CRAN!"
+  },
+  "repo": "https://github.com/ropensci/patentsview",
+  "pkg": "patentsview",
+  "time": "2026-08-30T07:13:07Z"
+}

@@ -1,0 +1,240 @@
+# Examples
+
+With the recent [API
+changes](https://docs.ropensci.org/patentsview/articles/api-changes.md),
+the patent endpoint is the main way to retrieve data. The other
+endpoints supply additional information. Also note that an API key is
+required.
+
+## Patent endpoint
+
+Which patents have been cited by more than 500 US patents?
+
+``` r
+
+library(patentsview)
+
+fields = c("patent_id", "patent_title", "patent_date")
+search_pv(query = qry_funs$gt(patent_num_times_cited_by_us_patents = 500),
+  fields = fields)
+#> $data
+#> #### A list with a single data frame on patents level:
+#> 
+#> List of 1
+#>  $ patents:'data.frame': 1000 obs. of  3 variables:
+#>   ..$ patent_id   : chr [1:1000] "10004497" ...
+#>   ..$ patent_title: chr [1:1000] "Interface systems for use with surgical ins"..
+#>   ..$ patent_date : chr [1:1000] "2018-06-26" ...
+#> 
+#> $query_results
+#> #### Distinct entity counts across all downloadable pages of output:
+#> 
+#> total_hits = 15,169
+```
+
+How many distinct inventors are represented by these highly-cited
+patents?
+
+``` r
+
+
+search_pv(
+  query = qry_funs$gt(patent_num_times_cited_by_us_patents = 500),
+  fields = c("patent_id", "inventors")
+)
+#> $data
+#> #### A list with a single data frame (with list column(s) inside) on patents level:
+#> 
+#> List of 1
+#>  $ patents:'data.frame': 1000 obs. of  2 variables:
+#>   ..$ patent_id: chr [1:1000] "10004497" ...
+#>   ..$ inventors:List of 1000
+#> 
+#> $query_results
+#> #### Distinct entity counts across all downloadable pages of output:
+#> 
+#> total_hits = 15,169
+```
+
+Where geographically have Microsoft inventors been coming from over the
+past few years?
+
+``` r
+
+# Write the query
+query <- with_qfuns(
+  and(
+    gte(patent_date = "2022-07-26"), # Dates are in yyyy-mm-dd format
+    begins(assignees.assignee_organization = "Microsoft")
+  )
+)
+
+# Create a field list by getting the inventors fields- the primary key is needed
+# for unnest_pv_data()
+inv_fields <- get_fields(endpoint = "patent", groups="inventors")
+inv_fields <- c("patent_id", inv_fields)
+inv_fields
+#>  [1] "patent_id"                      "inventors.inventor_id"         
+#>  [3] "inventors.inventor_city"        "inventors.inventor_country"    
+#>  [5] "inventors.inventor_gender_code" "inventors.inventor_id"         
+#>  [7] "inventors.inventor_location_id" "inventors.inventor_name_first" 
+#>  [9] "inventors.inventor_name_last"   "inventors.inventor_sequence"   
+#> [11] "inventors.inventor_state"
+
+# Pull the data
+pv_out <- search_pv(query, fields = inv_fields, all_pages = TRUE, size = 1000)
+
+# Unnest the inventor list column
+unnest_pv_data(pv_out$data, "patent_id")
+#> List of 2
+#>  $ inventors:'data.frame':   23720 obs. of  11 variables:
+#>   ..$ patent_id           : chr [1:23720] "11397055" ...
+#>   ..$ inventor            : chr [1:23720] "https://search.patentsview.org/api"..
+#>   ..$ inventor_id         : chr [1:23720] "fl:tz_ln:lin-54" ...
+#>   ..$ inventor_name_first : chr [1:23720] "Tzu-Yuan" ...
+#>   ..$ inventor_name_last  : chr [1:23720] "Lin" ...
+#>   ..$ inventor_gender_code: chr [1:23720] "M" ...
+#>   ..$ inventor_location_id: chr [1:23720] "13f05eea-16c8-11ed-9b5f-1234bde3cd"..
+#>   ..$ inventor_city       : chr [1:23720] "San Jose" ...
+#>   ..$ inventor_state      : chr [1:23720] "CA" ...
+#>   ..$ inventor_country    : chr [1:23720] "US" ...
+#>   ..$ inventor_sequence   : int [1:23720] 1 2 ...
+#>  $ patents  :'data.frame':   5796 obs. of  1 variable:
+#>   ..$ patent_id: chr [1:5796] "11397055" ...
+```
+
+Which assignees have an interest in beer?
+
+``` r
+
+query <- with_qfuns(
+  and(
+    contains(patent_title = "beer"),
+    eq(assignees.assignee_sequence = 0)
+  )
+)
+
+fields <- c("patent_id", "patent_title", "assignees.assignee_organization")
+res <- search_pv(query = query, fields = fields, endpoint = "patent", size = 1)
+str(res$data)
+#> List of 1
+#>  $ patents:'data.frame': 1 obs. of  3 variables:
+#>   ..$ patent_id   : chr "10000326"
+#>   ..$ patent_title: chr "Plastic beer keg"
+#>   ..$ assignees   :List of 1
+#>   .. ..$ :'data.frame':  1 obs. of  11 variables:
+#>   .. .. ..$ assignee                      : chr "https://search.patentsview.org/api/v1/assignee/4d2d4486-edec-40f7-80fd-64e6639e865e/"
+#>   .. .. ..$ assignee_id                   : chr "4d2d4486-edec-40f7-80fd-64e6639e865e"
+#>   .. .. ..$ assignee_type                 : chr "2"
+#>   .. .. ..$ assignee_individual_name_first: logi NA
+#>   .. .. ..$ assignee_individual_name_last : logi NA
+#>   .. .. ..$ assignee_organization         : chr "Rehrig Pacific Company"
+#>   .. .. ..$ assignee_location_id          : chr "15c69712-16c8-11ed-9b5f-1234bde3cd05"
+#>   .. .. ..$ assignee_city                 : chr "Los Angeles"
+#>   .. .. ..$ assignee_state                : chr "CA"
+#>   .. .. ..$ assignee_country              : chr "US"
+#>   .. .. ..$ assignee_sequence             : int 0
+#>  - attr(*, "class")= chr [1:2] "list" "pv_data_result"
+```
+
+## Inventor Endpoint
+
+Which inventor’s most recent patent has Chicago, IL listed as their
+location.
+
+``` r
+
+pv_out <- search_pv(
+  query = '{"_and":[{"_text_phrase": {"inventor_lastknown_city":"Chicago"}},
+                    {"_text_phrase": {"inventor_lastknown_state":"IL"}}]}',
+  endpoint = "inventor",
+  fields = c("inventor_id", "inventor_name_first", "inventor_name_last")
+)
+
+pv_out
+#> $data
+#> #### A list with a single data frame on inventors level:
+#> 
+#> List of 1
+#>  $ inventors:'data.frame':   1000 obs. of  3 variables:
+#>   ..$ inventor_id        : chr [1:1000] "001sh51t5ft5hbegqhzo1y4or" ...
+#>   ..$ inventor_name_first: chr [1:1000] "Michael M." ...
+#>   ..$ inventor_name_last : chr [1:1000] "Stamler" ...
+#> 
+#> $query_results
+#> #### Distinct entity counts across all downloadable pages of output:
+#> 
+#> total_hits = 13,999
+```
+
+In the new version of the API, the behavior of this endpoint has
+changed. See the similar example on the [legacy inventors
+endpoint](https://patentsview.org/apis/api-endpoints/inventors) page for
+its original behavior.
+
+We could also call the new version of the patent endpoint to find
+inventors who listed Chicago, IL as their location when applying for a
+patent.
+
+``` r
+
+fields <- get_fields('patent', groups="inventors")
+fields <- c("patent_id", fields)
+fields
+#>  [1] "patent_id"                      "inventors.inventor_id"         
+#>  [3] "inventors.inventor_city"        "inventors.inventor_country"    
+#>  [5] "inventors.inventor_gender_code" "inventors.inventor_id"         
+#>  [7] "inventors.inventor_location_id" "inventors.inventor_name_first" 
+#>  [9] "inventors.inventor_name_last"   "inventors.inventor_sequence"   
+#> [11] "inventors.inventor_state"
+
+query <- '{"_and":[{"_text_phrase": {"inventors.inventor_city":"Chicago"}},
+                   {"_text_phrase": {"inventors.inventor_state":"IL"}}]}'
+
+search_pv(query, fields=fields, endpoint="patent")
+#> $data
+#> #### A list with a single data frame (with list column(s) inside) on patents level:
+#> 
+#> List of 1
+#>  $ patents:'data.frame': 1000 obs. of  2 variables:
+#>   ..$ patent_id: chr [1:1000] "10000578" ...
+#>   ..$ inventors:List of 1000
+#> 
+#> $query_results
+#> #### Distinct entity counts across all downloadable pages of output:
+#> 
+#> total_hits = 49,014
+```
+
+Note that here all the inventors on a particular patent will be
+returned, not just the ones whose location was Chicago, IL. Also see the
+[Writing Queries
+Vignette](https://docs.ropensci.org/patentsview/articles/writing-queries.md)
+for more readable ways to write queries.
+
+## Assignee Endpoint
+
+What assignee’s organizations start Microsoft?
+
+``` r
+
+query <- qry_funs$begins(assignee_organization = "Microsoft")
+fields <- get_fields("assignee")
+pv_out <- search_pv(query, fields = fields, endpoint = "assignee")
+pv_out$data$assignees$assignee_organization
+#>  [1] "Microsoft Systems Inc."                          
+#>  [2] "Microsoft Technology Beaming, LLC"               
+#>  [3] "Microsoft Patent Licensing, LLC"                 
+#>  [4] "Microsoft Mobile Internet AB"                    
+#>  [5] "Microsoft Corporation"                           
+#>  [6] "Microsoft Mobile Oy"                             
+#>  [7] "Microsoft Technology, LLC."                      
+#>  [8] "Microsoft Technology Learning, LLC"              
+#>  [9] "Microsoft Israel Research and Development (2002)"
+#> [10] "MICROSOFT INTERNATIONAL HOLDINGS B.V."           
+#> [11] "Microsoft Corporation—One Microsoft Way"         
+#> [12] "MICROSOFT TECHNOLOGY LICENSING, LLC"             
+#> [13] "Microsoft Licensing Technology, LLC"             
+#> [14] "Microsoft Orthopedics Holdings Inc."             
+#> [15] "Microsoft Licencing Corporation, LLC"
+```

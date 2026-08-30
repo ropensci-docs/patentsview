@@ -1,0 +1,18 @@
+pandoc: 3.8.3
+pkgdown: 2.2.1
+pkgdown_sha: ~
+articles:
+  api-changes: api-changes.html
+  citation-networks: citation-networks.html
+  converting-an-existing-script: converting-an-existing-script.html
+  examples: examples.html
+  getting-started: getting-started.html
+  result-set-paging: result-set-paging.html
+  ropensci-blog-post: ropensci-blog-post.html
+  top-assignees: top-assignees.html
+  understanding-the-api: understanding-the-api.html
+  writing-queries: writing-queries.html
+last_built: 2026-08-30T07:12Z
+urls:
+  reference: https://docs.ropensci.org/patentsview/reference
+  article: https://docs.ropensci.org/patentsview/articles
