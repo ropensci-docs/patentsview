@@ -1,0 +1,135 @@
+# patentsview
+
+> An R client to the PatentsView API
+
+[![](http://badges.ropensci.org/112_status.svg)](https://github.com/ropensci/software-review/issues/112)
+[![R-CMD-check](https://github.com/ropensci/patentsview/workflows/R-CMD-check/badge.svg)](https://github.com/ropensci/patentsview/actions)
+[![CRAN
+version](http://www.r-pkg.org/badges/version/patentsview)](https://cran.r-project.org/package=patentsview)
+[![runiverse-package](https://ropensci.r-universe.dev/badges/patentsview)](https://ropensci.r-universe.dev/patentsview)
+
+## Installation
+
+You can get the stable version from CRAN:
+
+``` r
+
+install.packages("patentsview")
+```
+
+### Development version
+
+To get a bug fix or to use a feature from the development version, you
+can install the development version from GitHub:
+
+``` r
+
+# install.packages("pak")
+pak::pak("ropensci/patentsview")
+```
+
+## Basic usage
+
+The [PatentsView
+API](https://search.patentsview.org/docs/docs/Search%20API/SearchAPIReference/)
+provides an interface to a disambiguated version of USPTO. The
+`patentsview` R package provides one main function,
+[`search_pv()`](https://docs.ropensci.org/patentsview/reference/search_pv.md),
+to make it easy to interact with the API:
+
+``` r
+
+library(patentsview)
+
+search_pv(query = '{"_gte":{"patent_date":"2007-01-01"}}')
+#> $data
+#> #### A list with a single data frame on patents level:
+#> 
+#> List of 1
+#>  $ patents:'data.frame': 1000 obs. of  1 variable:
+#>   ..$ patent_id: chr [1:1000] "10000000" ...
+#> 
+#> $query_results
+#> #### Distinct entity counts across all downloadable pages of output:
+#> 
+#> total_hits = 5,815,634
+```
+
+## Learning more
+
+Head over to the package’s
+[webpage](https://docs.ropensci.org/patentsview/index.html) for more
+info, including:
+
+- A [getting started
+  vignette](https://docs.ropensci.org/patentsview/articles/getting-started.html)
+  for first-time users. The package was also introduced in an [rOpenSci
+  blog
+  post](https://docs.ropensci.org/patentsview/articles/ropensci-blog-post.html),
+  rewritten for the new version of the API.
+- An in-depth tutorial on [writing
+  queries](https://docs.ropensci.org/patentsview/articles/writing-queries.html)
+- A list of [basic
+  examples](https://docs.ropensci.org/patentsview/articles/examples.html)
+- Two examples of data applications (e.g., a brief analysis of the [top
+  assignees](https://docs.ropensci.org/patentsview/articles/top-assignees.html)
+  in the field of databases)
+
+# Package index
+
+## The API client
+
+- [`search_pv()`](https://docs.ropensci.org/patentsview/reference/search_pv.md)
+  : Search PatentsView
+
+## Convenience objects for search_pv
+
+- [`get_endpoints()`](https://docs.ropensci.org/patentsview/reference/get_endpoints.md)
+  : Get endpoints
+- [`get_fields()`](https://docs.ropensci.org/patentsview/reference/get_fields.md)
+  : Get list of retrievable fields
+- [`fieldsdf`](https://docs.ropensci.org/patentsview/reference/fieldsdf.md)
+  : Fields data frame
+
+## Writing queries with the DSL
+
+- [`qry_funs`](https://docs.ropensci.org/patentsview/reference/qry_funs.md)
+  : List of query functions
+- [`with_qfuns()`](https://docs.ropensci.org/patentsview/reference/with_qfuns.md)
+  : With qry_funs
+
+## Manipulating PatentsView data
+
+- [`unnest_pv_data()`](https://docs.ropensci.org/patentsview/reference/unnest_pv_data.md)
+  : Unnest PatentsView data
+
+## Utility
+
+- [`get_ok_pk()`](https://docs.ropensci.org/patentsview/reference/get_ok_pk.md)
+  : Get OK primary key
+- [`retrieve_linked_data()`](https://docs.ropensci.org/patentsview/reference/retrieve_linked_data.md)
+  : Retrieve Linked Data
+
+# Articles
+
+### All vignettes
+
+- [API
+  Changes](https://docs.ropensci.org/patentsview/articles/api-changes.md):
+- [Citation
+  networks](https://docs.ropensci.org/patentsview/articles/citation-networks.md):
+- [Converting an Existing
+  Script](https://docs.ropensci.org/patentsview/articles/converting-an-existing-script.md):
+- [Examples](https://docs.ropensci.org/patentsview/articles/examples.md):
+- [Getting
+  started](https://docs.ropensci.org/patentsview/articles/getting-started.md):
+- [Result Set
+  Paging](https://docs.ropensci.org/patentsview/articles/result-set-paging.md):
+- [Accessing patent data with the patentsview
+  package](https://docs.ropensci.org/patentsview/articles/ropensci-blog-post.md):
+- [Top
+  assignees](https://docs.ropensci.org/patentsview/articles/top-assignees.md):
+- [Understanding the
+  API](https://docs.ropensci.org/patentsview/articles/understanding-the-api.md):
+- [Writing
+  queries](https://docs.ropensci.org/patentsview/articles/writing-queries.md):
